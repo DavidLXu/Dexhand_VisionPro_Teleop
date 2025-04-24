@@ -1,0 +1,51 @@
+
+# Installation
+
+
+# Usage
+Change to `DexTeleop/dexgrasp` directory
+```bash
+cd DexTeleop/dexgrasp
+```
+
+For armless (floating) Allegro Hand
+```bash
+python run_online.py --task DexhandTeleop --algo ppo --config teleop_policy.yaml
+```
+
+For Allegro Hand mounted on xArm6
+```bash
+python run_online.py --task DexhandTeleop --algo ppo --config teleop_policy.yaml --use_xarm6
+```
+
+Note: While we do not perform reinforcement learning training, we leverage [UniGraspTransformer](https://github.com/microsoft/UniGraspTransformer)'s RL environment codebase to enable potential future extensions.
+
+# Pipeline
+
+
+
+# Notes
+## 1. Armless Hand Force Control
+
+If we use the original Allegro URDF, finger movements will cause rotation of the floating palm due to conservation of angular momentum.
+<p align="center" float="left">
+  <img src="original_inertia.gif" width="450" alt="original palm inertia"/>
+  <img src="increased_inertia.gif" width="450" alt="increased palm inertia"/>
+</p>
+<p align="center">
+  <em>Left: original palm inertia. Right: increased palm inertia.</em>
+</p>
+We used a trick to increase the palm's inertia, which makes the floating hand control more stable.
+
+## 2. xArm Congfigurations
+For the allegro hand mounted on xArm6, there are multiple configurations for each end-effector pose. 
+<p align="center" float="left">
+  <img src="configuration_1.gif" width="450"/>
+  <img src="configuration_2.gif" width="450"/>
+</p>
+<p align="center">
+  <em>Left: "stretched" arm configuration. Right: "twisted" arm configuration.</em>
+</p>
+For instance we typically want the first configuation which is more "stretched" as the GIF shows, but it's possible to get the second configuration which is more "twisted" where the pitch rotation is constrained. To solve this, we can use a 7DoF arm with more advanced trajectory planning algorithms, which is beyond the scope of this repo.
+
+## 3. Contact rich interaction

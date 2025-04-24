@@ -365,6 +365,7 @@ class DexhandTeleop(BaseTask):
         else:
 
             dexterous_hand_asset_file = "allegro_hand/allegro_hand_right_glb.urdf"
+            # dexterous_hand_asset_file = "allegro_hand/allegro_hand_right_glb_original_inertia.urdf"
             asset_options = gymapi.AssetOptions()
             asset_options.flip_visual_attachments = False
             asset_options.fix_base_link = False
@@ -479,6 +480,10 @@ class DexhandTeleop(BaseTask):
         self.Kp_pos = 4000
         self.Ki_pos = 0.05
         self.Kd_pos = 5
+        #! for urdf with original inertia
+        # self.Kp_pos = 200
+        # self.Ki_pos = 0.05
+        # self.Kd_pos = 0.02
         force = self.Kp_pos * position_error + self.Ki_pos * self.pos_error_integral + self.Kd_pos * pos_derivative
 
         self.apply_forces[:, 0, :] = force 
@@ -507,6 +512,10 @@ class DexhandTeleop(BaseTask):
         self.Kp_rot = 40 # 0.3
         self.Ki_rot = 0.001
         self.Kd_rot = 1.5 # 0.005
+        #! for urdf with original inertia
+        # self.Kp_rot = 1
+        # self.Ki_rot = 0.001
+        # self.Kd_rot = 0.05
         torque = self.Kp_rot * rotation_error + self.Ki_rot * self.rot_error_integral + self.Kd_rot * rot_derivative
 
         self.apply_torque[:, 1, :] = torque
