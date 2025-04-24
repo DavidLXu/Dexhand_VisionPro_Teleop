@@ -1,0 +1,19 @@
+Infos:
+  save_name: Results
+
+Modes:
+  train_default: False
+  double_update_step: True
+  double_iteration_step: False
+  double_update_half_iteration_step: False
+
+Models:
+  pi_hid_sizes: [512, 512, 256, 256]
+  vf_hid_sizes: [512, 512, 256, 256]
+  activation: elu # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
+  backbone_type: None
+  freeze_backbone: False
+  sigmoid_actions: False
+
+Weights:
+  num_observation: 232 # change of observation space needs to modify here

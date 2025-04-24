@@ -1,0 +1,29 @@
+Infos:
+  save_name: Results
+Init: false
+Models:
+  activation: elu
+  backbone_type: None
+  freeze_backbone: false
+  pi_hid_sizes:
+  - 512
+  - 512
+  - 256
+  - 256
+  sigmoid_actions: false
+  vf_hid_sizes:
+  - 512
+  - 512
+  - 256
+  - 256
+Modes:
+  double_iteration_step: false
+  double_update_half_iteration_step: false
+  double_update_step: true
+  train_default: false
+Save: false
+Save_Base: /data/DexHand_VisionPro_Teleop/Logs/Results
+Save_Render: false
+Save_Train: false
+Weights:
+  num_observation: 232

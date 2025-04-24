@@ -1,0 +1,9 @@
+LICENSE.txt
+README.md
+setup.py
+dexgrasp.egg-info/PKG-INFO
+dexgrasp.egg-info/SOURCES.txt
+dexgrasp.egg-info/dependency_links.txt
+dexgrasp.egg-info/not-zip-safe
+dexgrasp.egg-info/requires.txt
+dexgrasp.egg-info/top_level.txt

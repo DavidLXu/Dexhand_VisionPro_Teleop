@@ -1,0 +1,35 @@
+graphics_device_id: 0
+env:
+  env_name: "dexhand_teleop"
+  numEnvs: 1
+  envSpacing: 0.6
+  episodeLength: 300 # 250
+  aggregateMode: 1
+
+  ##########################################
+  use_xarm6: False # change here to swtich between armless and xarm
+  print_asset_info: False
+  ##########################################
+
+  controlFrequencyInv: 1 # 60 Hz
+
+  asset:
+    assetRoot: "../../Assets"
+
+sim:
+  substeps: 2
+  physx:
+    num_threads: 4
+    solver_type: 1  # 0: pgs, 1: tgs
+    num_position_iterations: 8 # 8 bottle
+    num_velocity_iterations: 0
+    contact_offset: 0.002
+    rest_offset: 0.0
+    bounce_threshold_velocity: 0.2
+    max_depenetration_velocity: 1000.0
+    default_buffer_size_multiplier: 5.0
+  flex:
+    num_outer_iterations: 5
+    num_inner_iterations: 20
+    warm_start: 0.8
+    relaxation: 0.75
