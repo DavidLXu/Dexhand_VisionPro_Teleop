@@ -1,6 +1,16 @@
 
 # Installation
-
+```
+git clone https://github.com/DavidLXu/Dexhand_VisionPro_Teleop.git
+conda create -n dexgrasp python=3.8
+conda activate dexgrasp
+# install isaacgym
+cd path_to_isaacgym/python
+pip install -e .
+# install this repo
+cd DexTeleop
+bash install.sh
+```
 
 # Usage
 Change to `DexTeleop/dexgrasp` directory
@@ -18,7 +28,7 @@ For Allegro Hand mounted on xArm6
 python run_online.py --task DexhandTeleop --algo ppo --config teleop_policy.yaml --use_xarm6
 ```
 
-Note: While we do not perform reinforcement learning training, we leverage [UniGraspTransformer](https://github.com/microsoft/UniGraspTransformer)'s RL environment codebase to enable potential future extensions.
+Note: While we do not perform reinforcement learning, we leverage [UniGraspTransformer](https://github.com/microsoft/UniGraspTransformer)'s RL environment codebase to enable potential future extensions.
 
 # Pipeline
 
