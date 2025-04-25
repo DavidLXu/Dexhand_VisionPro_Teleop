@@ -40,8 +40,8 @@ Note: While we do not perform reinforcement learning, we leverage [UniGraspTrans
 
 If we use the original Allegro URDF, finger movements will cause rotation of the floating palm due to conservation of angular momentum.
 <p align="center" float="left">
-  <img src="original_inertia.gif" width="450" alt="original palm inertia"/>
-  <img src="increased_inertia.gif" width="450" alt="increased palm inertia"/>
+  <img src="Media/original_inertia.gif" width="450" alt="original palm inertia"/>
+  <img src="Media/increased_inertia.gif" width="450" alt="increased palm inertia"/>
 </p>
 <p align="center">
   <em>Left: original palm inertia. Right: increased palm inertia.</em>
@@ -51,8 +51,8 @@ We used a trick to increase the palm's inertia, which makes the floating hand co
 ## 2. xArm Congfigurations
 For the allegro hand mounted on xArm6, there are multiple configurations for each end-effector pose. 
 <p align="center" float="left">
-  <img src="configuration_1.gif" width="450"/>
-  <img src="configuration_2.gif" width="450"/>
+  <img src="Media/configuration_1.gif" width="450"/>
+  <img src="Media/configuration_2.gif" width="450"/>
 </p>
 <p align="center">
   <em>Left: "stretched" arm configuration. Right: "twisted" arm configuration.</em>
@@ -62,13 +62,16 @@ For instance we typically want the first configuation which is more "stretched" 
 ## 3. Contact rich interaction
 WIP. Interaction with various objects.
 <p align="center" float="left">
-  <img src="contact_rich.gif" width="450"/>
+  <img src="Media/contact_rich.gif" width="450"/>
 </p>
 
 # TODO
 - [x] Bridging Apple Vision Pro Tracking Streamer and PyBullet IK solver.
-- [x] Support for armless (floating) Allegro hand.
-- [x] Support for Allegro hand mounted on xArm.
+- [x] Support for URDF: Armless (floating) Allegro hand.
+- [x] Support for URDF: Allegro hand mounted on xArm.
+- [ ] Support for URDF: Franka Arm and LEAP Hand.
 - [ ] Support for Bi-hands and Bi-arms.
-- [ ] Support for Franka Arm and LEAP Hand.
+- [ ] Support for INPUT source: Joystick.
+- [ ] Support for INPUT source: Meta Quest.
+- [ ] Support for INPUT source: 3D Mouse.
 - [ ] Support for data recording.

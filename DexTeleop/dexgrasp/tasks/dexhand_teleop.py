@@ -28,7 +28,11 @@ from utils.avp_leap import AllegroPybulletIKPython
 sys.path.append(osp.join(BASE_DIR, 'dexgrasp/autoencoding'))
 from dexgrasp.autoencoding.PN_Model import AutoencoderPN, AutoencoderTransPN
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
+
+from abc import ABC, abstractmethod
+from typing import Tuple, Optional
+
 from pytorch3d.transforms import (
     axis_angle_to_matrix,
     axis_angle_to_quaternion,
@@ -126,6 +130,125 @@ def quat_to_rot6d(quaternions: Union[torch.Tensor, np.ndarray]) -> Union[torch.T
     t = Compose([quaternion_to_matrix, matrix_to_rotation_6d])
     return t(quaternions)
 
+def euler_to_quat(euler_angles: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:
+    t = Compose([euler_angles_to_matrix, matrix_to_quaternion])
+    return t(euler_angles)
+
+
+class KeyboardTeleopDevice():
+    def __init__(self, num_envs, device, gym, viewer):
+        self.num_envs = num_envs
+        self.device = device
+        self.gym = gym
+        self.viewer = viewer
+
+        '''
+        In the gym viewer init viewer angle, +x is pointint left, +y is pointing at us, +z is pointing up.
+        Below shows the keymap for teleoperation.
+        q(-z) w(-y) e(+z)                       u(+qy) i(+qx) o(-qy)
+        a(+x) s(+y) d(-x) f(grasp)   h(release) j(+qz) k(-qx) l(-qz)
+        '''
+
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_W, "y_minus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_S, "y_plus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_A, "x_plus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_D, "x_minus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_Q, "z_minus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_E, "z_plus")
+        # note the rotation action name here is not correct, refer to the comment above
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_I, "rotz_minus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_K, "rotz_plus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_J, "roty_plus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_L, "roty_minus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_U, "rotx_plus")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_O, "rotx_minus")
+
+
+        # self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_F, "grasp")
+        # self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_H, "release")
+        
+        # Initialize position and euler angles
+        self.position = torch.tensor([0, 0, 0.5], device=device)
+        self.euler_angles = torch.tensor([1.57, 0, 1.57], device=device)
+        self.position_step = 0.05
+        self.rotation_step = 0.157*2
+        
+    def get_teleop_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+        for evt in self.gym.query_viewer_action_events(self.viewer):
+            # print("action name", evt.action)
+            # controlling translation
+            if evt.action == "x_minus" and evt.value > 0:
+                self.position[0] -= self.position_step
+                
+            if evt.action == "y_minus" and evt.value > 0:
+                self.position[1] -= self.position_step
+
+            if evt.action == "z_minus" and evt.value > 0:
+                self.position[2] -= self.position_step
+
+            if evt.action == "x_plus" and evt.value > 0:
+                self.position[0] += self.position_step
+
+            if evt.action == "y_plus" and evt.value > 0:
+                self.position[1] += self.position_step
+
+            if evt.action == "z_plus" and evt.value > 0:
+                self.position[2] += self.position_step
+
+            # controlling rotation
+            if evt.action == "rotx_minus" and evt.value > 0:
+                self.euler_angles[0] -= self.rotation_step
+
+            if evt.action == "roty_minus" and evt.value > 0:
+                self.euler_angles[1] -= self.rotation_step
+
+            if evt.action == "rotz_minus" and evt.value > 0:
+                self.euler_angles[2] -= self.rotation_step
+
+            if evt.action == "rotx_plus" and evt.value > 0:
+                self.euler_angles[0] += self.rotation_step
+
+            if evt.action == "roty_plus" and evt.value > 0:
+                self.euler_angles[1] += self.rotation_step
+
+            if evt.action == "rotz_plus" and evt.value > 0:
+                self.euler_angles[2] += self.rotation_step
+
+            # # grasping
+            # if evt.action == "grasp" and evt.value > 0:
+            #     self.hand_dof_pos_targets[:,6:] = 1 # 0.8 is a good place
+
+            #     self.hand_dof_pos_targets[:,6] = -0.2
+            #     self.hand_dof_pos_targets[:,14] = 0
+            #     self.hand_dof_pos_targets[:,18] = 0.2
+
+            #     # 6(index) 11(thumb) 14(mid) 18(little)
+            #     print(evt.action)
+
+            # # releasing
+            # if evt.action == "release" and evt.value > 0:
+            #     self.hand_dof_pos_targets[:,6:] = 0
+            #     print(evt.action)
+        
+
+        # Clamp euler angles to prevent unstable rotations
+        # self.euler_angles = torch.clamp(self.euler_angles, -3.14159, 3.14159)
+
+        # Convert euler angles to quaternion
+        target_quat = euler_to_quat(self.euler_angles.unsqueeze(0))
+
+        # Prepare outputs
+        target_pos = self.position
+        right_hand_target_pos = target_pos.repeat(self.num_envs, 1)
+        right_hand_target_rot = target_quat.repeat(self.num_envs, 1)
+        right_hand_target_finger = torch.zeros((self.num_envs, 16), device=self.device)
+
+        return right_hand_target_pos, right_hand_target_rot, right_hand_target_finger
+
+        
+
+
 # DexhandTeleop Single Hand Teleop Env
 class DexhandTeleop(BaseTask):
     def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless,
@@ -145,9 +268,6 @@ class DexhandTeleop(BaseTask):
 
         self.HAND_BIT = 0b001     # 0001 in binary
 
-        #! modify ip address
-        self.teleop_ik = AllegroPybulletIKPython("192.168.100.17") 
-            
         self.pos_error_integral = 0
         self.prev_pos_error = 0
         self.rot_error_integral = 0
@@ -275,6 +395,10 @@ class DexhandTeleop(BaseTask):
         # debug tensor
         self.right_hand_pos = torch.zeros((self.num_envs, 3), dtype=torch.float, device=self.device)
         self.right_hand_rot = torch.zeros((self.num_envs, 4), dtype=torch.float, device=self.device)
+
+        #! modify ip address
+        self.teleop_ik = AllegroPybulletIKPython("192.168.100.17") 
+        self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
 
 
     def create_sim(self):
@@ -448,7 +572,47 @@ class DexhandTeleop(BaseTask):
         return dexterous_hand_asset, dexterous_hand_start_pose, dexterous_hand_dof_props
 
     # # ---------------------- Physics Simulation Steps ---------------------- # #
-    
+    def keyboard_action(self,actions):
+        right_hand_target_pos, right_hand_target_rot, right_hand_target_finger = self.teleop_device.get_teleop_data()
+
+        position_error = (right_hand_target_pos - self.right_hand_pos)
+        self.pos_error_integral += position_error * self.dt
+        self.pos_error_integral = torch.clamp(self.pos_error_integral, -1, 1)
+        pos_derivative = (position_error - self.prev_pos_error) / self.dt
+        self.Kp_pos = 4000
+        self.Ki_pos = 0.05
+        self.Kd_pos = 5
+        force = self.Kp_pos * position_error + self.Ki_pos * self.pos_error_integral + self.Kd_pos * pos_derivative
+        self.apply_forces[:, 0, :] = force 
+
+
+        rotation_error = orientation_error(right_hand_target_rot, self.right_hand_rot)
+        self.rot_error_integral += rotation_error * self.dt
+        self.rot_error_integral = torch.clamp(self.rot_error_integral, -1, 1)
+        rot_derivative = (rotation_error - self.prev_rot_error) / self.dt
+        self.Kp_rot = 40 # 0.3
+        self.Ki_rot = 0.001
+        self.Kd_rot = 1.5 # 0.005
+        torque = self.Kp_rot * rotation_error + self.Ki_rot * self.rot_error_integral + self.Kd_rot * rot_derivative
+        self.apply_torque[:, 1, :] = torque
+
+        self.gym.apply_rigid_body_force_tensors(
+            self.sim,
+            gymtorch.unwrap_tensor(self.apply_forces),
+            gymtorch.unwrap_tensor(self.apply_torque),
+            gymapi.ENV_SPACE,
+        )
+
+        self.cur_targets[:, :] = right_hand_target_finger
+        all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
+        self.gym.set_dof_position_target_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.cur_targets),
+                                                        gymtorch.unwrap_tensor(all_hand_indices), len(all_hand_indices))
+        self.prev_pos_error = position_error
+        self.prev_rot_error = rotation_error
+        self.prev_targets = self.cur_targets  
+
+
+
     def armless_hand_action(self, actions):
         #! vision_pro_teleop
         avp_output_joints, avp_output_wrist = self.teleop_ik.get_avp_data()
@@ -625,6 +789,7 @@ class DexhandTeleop(BaseTask):
             self.xarm6_hand_action(self.actions)
         else:
             self.armless_hand_action(self.actions)
+            # self.keyboard_action(self.actions)
 
         
 

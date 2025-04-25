@@ -6,10 +6,13 @@ env:
   episodeLength: 300 # 250
   aggregateMode: 1
 
-  ##########################################
+  ########### DexHand Type ###########
   use_xarm6: False # change here to swtich between armless and xarm
   print_asset_info: False
-  ##########################################
+
+  ########### Teleop Device ##########
+  teleop_device: "vision_pro"  #* "keyboard", "vision_pro", "meta_quest", "space_mouse", "joystick"
+  vision_pro_ip: "192.168.100.17"  # only used if teleop_device is "vision_pro" 
 
   controlFrequencyInv: 1 # 60 Hz
 
