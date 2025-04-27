@@ -1,6 +1,15 @@
+# <p align="center"> Dexhand Teleop </p>
+
+**Note**: More teleoperation devices are included! You can use either of these as teleop devices:
+* Apple Vision Pro
+* Keyboard
+* Space Mouse
+* Joystick
+* Meta Quest (WIP)
 
 # Installation
-```
+Tested on Ubuntu 20.04, CUDA 11.7 and 12.1
+``` bash
 git clone https://github.com/DavidLXu/Dexhand_VisionPro_Teleop.git
 conda create -n dexgrasp python=3.8
 conda activate dexgrasp
@@ -10,7 +19,10 @@ pip install -e .
 # install this repo
 cd DexTeleop
 bash install.sh
+# for joystick and space mouse teleoperation
+pip install pygame pyspacemouse 
 ```
+Install Tracking Streamer on Apple Vision Pro.
 
 # Usage
 Change to `DexTeleop/dexgrasp` directory
@@ -57,13 +69,65 @@ For the allegro hand mounted on xArm6, there are multiple configurations for eac
 <p align="center">
   <em>Left: "stretched" arm configuration. Right: "twisted" arm configuration.</em>
 </p>
-For instance we typically want the first configuation which is more "stretched" as the GIF shows, but it's possible to get the second configuration which is more "twisted" where the pitch rotation is constrained. To solve this, we can use a 7DoF arm with more advanced trajectory planning algorithms, which is beyond the scope of this repo.
+For instance we typically want the first configuation which is more "stretched" as the GIF shows, but it's possible to get the second configuration which is more "twisted" where the pitch rotation is constrained. To solve this, we can use a 7DoF arm (franka) with more advanced trajectory planning algorithms, which is beyond the scope of this repo.
 
-## 3. Contact rich interaction
+# Contact rich interaction
 WIP. Interaction with various objects.
 <p align="center" float="left">
   <img src="Media/contact_rich.gif" width="450"/>
 </p>
+
+# More teleoperation devices
+Given the high cost of Apple Vision Pro, we have implemented alternative teleoperation methods to make the system more accessible to a wider audience.
+
+## Keyboard
+In the gym viewer init viewer perspective, +x is pointing left, +y is pointing at us, +z is pointing up.
+Below shows the keymap for teleoperation.
+```
+q[-z] w[-y] e[+z]                  u[+qy] i[+qx] o[-qy]
+a[+x] s[+y] d[-x] f[grsp]   h[rls] j[+qz] k[-qx] l[-qz]
+```
+`q w e a s d` controls translation
+
+`u i o j k l` controls rotation
+
+`f` to grasp and `h` to release fingers heuristically.
+
+May encounter gimbal lock.
+
+Refer to class `KeyboardTeleopDevice`.
+
+## Joystick
+To use joystick control, make sure `pygame` is installed.
+
+| Control | Action |
+|---------|--------|
+| Left stick | XY translation |
+| X button | -Z translation |
+| Y button | +Z translation |
+| Right stick | Roll and pitch rotation |
+| Shoulder triggers | Yaw rotation |
+| A button | Grasp |
+| B button | Release |
+
+May encounter gimbal lock.
+
+Refer to class `JoystickTeleopDevice`.
+
+## Space Mouse
+To use Space Mouse control, make sure [PySpaceMouse](https://github.com/JakubAndrysek/PySpaceMouse) is installed.
+We use a 3D Connexion Space Mouse.
+| Control | Action |
+|---------|--------|
+| Mouse Cap| Delta 6D pose |
+| Left button | grasp |
+| Right button | Release |
+May encounter gimbal lock.
+
+Refer to class `SpaceMouseTeleop`.
+
+## Meta Quest
+WIP.
 
 # TODO
 - [x] Bridging Apple Vision Pro Tracking Streamer and PyBullet IK solver.
@@ -71,7 +135,8 @@ WIP. Interaction with various objects.
 - [x] Support for URDF: Allegro hand mounted on xArm.
 - [ ] Support for URDF: Franka Arm and LEAP Hand.
 - [ ] Support for Bi-hands and Bi-arms.
-- [ ] Support for INPUT source: Joystick.
+- [x] Support for INPUT source: Joystick.
+- [x] Support for INPUT source: 3D Mouse.
+- [x] Support for INPUT source: Keyboard.
 - [ ] Support for INPUT source: Meta Quest.
-- [ ] Support for INPUT source: 3D Mouse.
 - [ ] Support for data recording.

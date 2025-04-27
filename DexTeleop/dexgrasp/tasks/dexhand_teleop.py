@@ -32,7 +32,8 @@ from typing import List, Optional, Union, Tuple
 
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional
-
+import pyspacemouse
+import pygame
 from pytorch3d.transforms import (
     axis_angle_to_matrix,
     axis_angle_to_quaternion,
@@ -164,14 +165,16 @@ class KeyboardTeleopDevice():
         self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_O, "rotx_minus")
 
 
-        # self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_F, "grasp")
-        # self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_H, "release")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_F, "grasp")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_H, "release")
         
         # Initialize position and euler angles
         self.position = torch.tensor([0, 0, 0.5], device=device)
         self.euler_angles = torch.tensor([1.57, 0, 1.57], device=device)
         self.position_step = 0.05
         self.rotation_step = 0.157*2
+
+        self.finger_val = torch.zeros((self.num_envs, 16), device=device)
         
     def get_teleop_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
@@ -216,20 +219,14 @@ class KeyboardTeleopDevice():
                 self.euler_angles[2] += self.rotation_step
 
             # # grasping
-            # if evt.action == "grasp" and evt.value > 0:
-            #     self.hand_dof_pos_targets[:,6:] = 1 # 0.8 is a good place
-
-            #     self.hand_dof_pos_targets[:,6] = -0.2
-            #     self.hand_dof_pos_targets[:,14] = 0
-            #     self.hand_dof_pos_targets[:,18] = 0.2
-
-            #     # 6(index) 11(thumb) 14(mid) 18(little)
-            #     print(evt.action)
-
+            if evt.action == "grasp" and evt.value > 0:
+                self.finger_val[:,:] = 1.2
+                self.finger_val[:,0] = 0
+                self.finger_val[:,4] = 0
+                self.finger_val[:,8] = 0 
             # # releasing
-            # if evt.action == "release" and evt.value > 0:
-            #     self.hand_dof_pos_targets[:,6:] = 0
-            #     print(evt.action)
+            if evt.action == "release" and evt.value > 0:
+                self.finger_val[:,:] = 0
         
 
         # Clamp euler angles to prevent unstable rotations
@@ -242,11 +239,157 @@ class KeyboardTeleopDevice():
         target_pos = self.position
         right_hand_target_pos = target_pos.repeat(self.num_envs, 1)
         right_hand_target_rot = target_quat.repeat(self.num_envs, 1)
-        right_hand_target_finger = torch.zeros((self.num_envs, 16), device=self.device)
+        right_hand_target_finger = self.finger_val
 
         return right_hand_target_pos, right_hand_target_rot, right_hand_target_finger
 
+class SpaceMouseTeleop:
+    def __init__(self, num_envs: int, device: str):
+        """Initialize SpaceMouse teleop interface"""
+        self.num_envs = num_envs
+        self.device = device
         
+        # Initialize position and euler angles
+        self.position = torch.tensor([0, 0, 0.5], device=device)
+        self.euler_angles = torch.tensor([1.57, 0, 1.57], device=device)
+        
+        # Movement sensitivity
+        self.position_step = 0.05  
+        self.rotation_step = 0.157*2
+        
+        # Initialize finger values
+        self.finger_val = torch.zeros((self.num_envs, 16), device=device)
+        
+        # Connect to SpaceMouse
+        success = pyspacemouse.open()
+        if not success:
+            print("Failed to connect to SpaceMouse")
+            
+    def get_teleop_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Get teleop data from SpaceMouse"""
+        
+        # Read SpaceMouse state
+        state = pyspacemouse.read()
+        
+        if state:
+            # Update position based on translation
+            self.position[0] += state.x * self.position_step
+            self.position[1] += state.y * self.position_step 
+            self.position[2] += state.z * self.position_step
+            
+            # Update rotation based on roll/pitch/yaw
+            self.euler_angles[0] += state.roll * self.rotation_step
+            self.euler_angles[2] += state.pitch * self.rotation_step
+            self.euler_angles[1] -= state.yaw * self.rotation_step
+            
+            # Handle button presses for grasping
+            if state.buttons[0]:  # Left button press
+                self.finger_val[:,:] = 1.2
+                self.finger_val[:,0] = 0
+                self.finger_val[:,4] = 0
+                self.finger_val[:,8] = 0
+            elif state.buttons[1]:  # Right button press
+                self.finger_val[:,:] = 0
+            # Wrap euler angles to -pi to pi
+            self.euler_angles = torch.remainder(self.euler_angles + torch.pi, 2*torch.pi) - torch.pi
+        # Convert euler angles to quaternion
+        target_quat = euler_to_quat(self.euler_angles.unsqueeze(0))
+
+        # Prepare outputs
+        target_pos = self.position
+        right_hand_target_pos = target_pos.repeat(self.num_envs, 1)
+        right_hand_target_rot = target_quat.repeat(self.num_envs, 1)
+        right_hand_target_finger = self.finger_val
+
+        return right_hand_target_pos, right_hand_target_rot, right_hand_target_finger
+
+   
+class JoystickTeleopDevice():
+    def __init__(self, num_envs, device):
+        self.num_envs = num_envs
+        self.device = device
+
+        # Initialize position and euler angles
+        self.position = torch.tensor([0, 0, 0.5], device=device)
+        self.euler_angles = torch.tensor([1.57, 0, 1.57], device=device)
+        self.position_step = 0.01
+        self.rotation_step = 0.157
+
+        self.finger_val = torch.zeros((self.num_envs, 16), device=device)
+
+        # Try to initialize joystick
+        try:
+            
+            pygame.init()
+            pygame.joystick.init()
+            self.joystick = pygame.joystick.Joystick(0)
+            self.joystick.init()
+            print("Joystick connected successfully!")
+            self.has_joystick = True
+        except:
+            print("No joystick detected")
+            self.has_joystick = False
+
+    def get_teleop_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Get teleop data from joystick"""
+        if self.has_joystick:
+            # Process joystick events
+            pygame.event.pump()
+            # Get joystick axes values (-1 to 1)
+            # Apply deadzone threshold
+            deadzone = 0.05
+            
+            # Left stick controls XY translation
+            x_axis = self.joystick.get_axis(0)
+            y_axis = self.joystick.get_axis(1)
+            if abs(x_axis) > deadzone:
+                self.position[0] += -x_axis * self.position_step  # X translation
+            if abs(y_axis) > deadzone:
+                self.position[1] += y_axis * self.position_step # Y translation
+            
+            # Right stick controls rotation, X/Y buttons control Z translation
+            if self.joystick.get_button(3):  # X button
+                self.position[2] -= self.position_step  # Z down
+            if self.joystick.get_button(4):  # Y button
+                self.position[2] += self.position_step  # Z up
+
+            # Apply deadzone to rotation controls
+            roll = self.joystick.get_axis(2)
+            pitch = self.joystick.get_axis(3)
+            if abs(roll) > deadzone:
+                self.euler_angles[0] += -roll * self.rotation_step # Roll
+            if abs(pitch) > deadzone:
+                self.euler_angles[2] += pitch * self.rotation_step # Pitch
+
+            # Shoulder triggers control yaw
+            left_trigger = self.joystick.get_axis(4)
+            right_trigger = self.joystick.get_axis(5)
+            if abs(left_trigger) > deadzone or abs(right_trigger) > deadzone:
+                yaw_control = -(left_trigger - right_trigger) * 0.5
+                self.euler_angles[1] += yaw_control * self.rotation_step
+
+            # Handle buttons for grasping
+            if self.joystick.get_button(0):  # A button
+                self.finger_val[:,:] = 1.2
+                self.finger_val[:,0] = 0
+                self.finger_val[:,4] = 0  
+                self.finger_val[:,8] = 0
+            elif self.joystick.get_button(1):  # B button
+                self.finger_val[:,:] = 0
+
+            # Wrap euler angles to -pi to pi
+            self.euler_angles = torch.remainder(self.euler_angles + torch.pi, 2*torch.pi) - torch.pi
+
+        # Convert euler angles to quaternion
+        target_quat = euler_to_quat(self.euler_angles.unsqueeze(0))
+
+        # Prepare outputs
+        target_pos = self.position
+        right_hand_target_pos = target_pos.repeat(self.num_envs, 1)
+        right_hand_target_rot = target_quat.repeat(self.num_envs, 1)
+        right_hand_target_finger = self.finger_val
+
+        return right_hand_target_pos, right_hand_target_rot, right_hand_target_finger
 
 
 # DexhandTeleop Single Hand Teleop Env
@@ -397,8 +540,9 @@ class DexhandTeleop(BaseTask):
         self.right_hand_rot = torch.zeros((self.num_envs, 4), dtype=torch.float, device=self.device)
 
         #! modify ip address
-        self.teleop_ik = AllegroPybulletIKPython("192.168.100.17") 
-        self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
+        # self.teleop_ik = AllegroPybulletIKPython("192.168.100.17") 
+        # self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
+        self.teleop_device = JoystickTeleopDevice(self.num_envs, self.device)
 
 
     def create_sim(self):
@@ -788,8 +932,8 @@ class DexhandTeleop(BaseTask):
         if self.cfg['env']['use_xarm6']:
             self.xarm6_hand_action(self.actions)
         else:
-            self.armless_hand_action(self.actions)
-            # self.keyboard_action(self.actions)
+            # self.armless_hand_action(self.actions)
+            self.keyboard_action(self.actions)
 
         
 
