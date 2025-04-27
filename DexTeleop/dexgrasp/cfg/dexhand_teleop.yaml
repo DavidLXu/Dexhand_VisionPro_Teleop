@@ -12,7 +12,7 @@ env:
 
   ########### Teleop Device ##########
   teleop_device: "keyboard"  #* "keyboard", "vision_pro", "meta_quest", "space_mouse", "joystick"
-  vision_pro_ip: "192.168.100.17"  # only used if teleop_device is "vision_pro" 
+  vision_pro_ip: "192.168.3.43"  # only used if teleop_device is "vision_pro" 
 
   controlFrequencyInv: 1 # 60 Hz
 

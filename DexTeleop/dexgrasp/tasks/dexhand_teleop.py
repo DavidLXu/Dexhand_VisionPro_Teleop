@@ -539,10 +539,17 @@ class DexhandTeleop(BaseTask):
         self.right_hand_pos = torch.zeros((self.num_envs, 3), dtype=torch.float, device=self.device)
         self.right_hand_rot = torch.zeros((self.num_envs, 4), dtype=torch.float, device=self.device)
 
-        #! modify ip address
-        # self.teleop_ik = AllegroPybulletIKPython("192.168.100.17") 
-        # self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
-        self.teleop_device = JoystickTeleopDevice(self.num_envs, self.device)
+        
+        
+        # Teleoperation device
+        if self.cfg['env']['teleop_device'] == "vision_pro":
+            self.teleop_device = AllegroPybulletIKPython(self.cfg['env']['vision_pro_ip']) #! modify ip address in dexhand_teleop.yaml
+        elif self.cfg['env']['teleop_device'] == "keyboard":
+            self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
+        elif self.cfg['env']['teleop_device'] == "space_mouse":
+            self.teleop_device = SpaceMouseTeleop(self.num_envs, self.device)
+        elif self.cfg['env']['teleop_device'] == "joystick":
+            self.teleop_device = JoystickTeleopDevice(self.num_envs, self.device)
 
 
     def create_sim(self):
@@ -716,7 +723,7 @@ class DexhandTeleop(BaseTask):
         return dexterous_hand_asset, dexterous_hand_start_pose, dexterous_hand_dof_props
 
     # # ---------------------- Physics Simulation Steps ---------------------- # #
-    def keyboard_action(self,actions):
+    def dexteleop_armless_action(self,actions=None):
         right_hand_target_pos, right_hand_target_rot, right_hand_target_finger = self.teleop_device.get_teleop_data()
 
         position_error = (right_hand_target_pos - self.right_hand_pos)
@@ -755,11 +762,35 @@ class DexhandTeleop(BaseTask):
         self.prev_rot_error = rotation_error
         self.prev_targets = self.cur_targets  
 
+    def dexteleop_xarm6_action(self,actions=None):
+        right_hand_target_pos, right_hand_target_rot, right_hand_target_finger = self.teleop_device.get_teleop_data()
 
+        right_pos_err = (right_hand_target_pos - self.right_hand_pos)
+        right_rot_err = orientation_error(right_hand_target_rot, self.right_hand_rot)
 
-    def armless_hand_action(self, actions):
+        #* xarm6 control
+        right_dpose = torch.cat([right_pos_err, right_rot_err], -1).unsqueeze(-1).to(torch.float)
+        # print(right_dpose.shape,self.jacobian[:, 6, :, :6].shape)
+        right_delta = control_ik(
+            self.jacobian[:4, 6, :, :6].to(torch.float),
+            self.device,
+            right_dpose,
+            self.num_envs,
+        )
+        self.cur_targets[:, 0:6] = self.dexterous_hand_dof_pos[:, 0:6] + right_delta[:, :6]
+
+        #* Finger Control
+
+        self.cur_targets[:, 6:] = right_hand_target_finger
+
+        all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
+
+        self.gym.set_dof_position_target_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.cur_targets),
+                                                        gymtorch.unwrap_tensor(all_hand_indices), len(all_hand_indices))
+    
+    def vision_pro_armless_action(self, actions=None):
         #! vision_pro_teleop
-        avp_output_joints, avp_output_wrist = self.teleop_ik.get_avp_data()
+        avp_output_joints, avp_output_wrist = self.teleop_device.get_avp_data()
         avp_output_wrist = avp_output_wrist.to(self.device)
         
 
@@ -856,9 +887,9 @@ class DexhandTeleop(BaseTask):
         self.prev_rot_error = rotation_error
         self.prev_targets = self.cur_targets  
     
-    def xarm6_hand_action(self, actions):
+    def vision_pro_xarm6_action(self, actions=None):
         #! vision_pro_teleop
-        avp_output_joints, avp_output_wrist = self.teleop_ik.get_avp_data()
+        avp_output_joints, avp_output_wrist = self.teleop_device.get_avp_data()
 
         avp_output_wrist = avp_output_wrist.to(self.device)
         avp_output_wrist[:,0] = -avp_output_wrist[:,0]  # x -> -x
@@ -927,13 +958,19 @@ class DexhandTeleop(BaseTask):
     
     def pre_physics_step(self, actions):
 
-        self.actions = actions.clone().to(self.device)
-
-        if self.cfg['env']['use_xarm6']:
-            self.xarm6_hand_action(self.actions)
-        else:
-            # self.armless_hand_action(self.actions)
-            self.keyboard_action(self.actions)
+        if self.cfg['env']['teleop_device'] == "vision_pro":
+            if self.cfg['env']['use_xarm6']:
+                self.vision_pro_xarm6_action()
+            else:
+                self.vision_pro_armless_action()
+            
+        else: # teleoperation devices other than vision pro
+            if self.cfg['env']['use_xarm6']:
+                # self.xarm6_hand_action(self.actions)
+                self.dexteleop_xarm6_action()
+            else:
+                # self.armless_hand_action(self.actions)
+                self.dexteleop_armless_action()
 
         
 

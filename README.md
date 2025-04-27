@@ -22,7 +22,7 @@ bash install.sh
 # for joystick and space mouse teleoperation
 pip install pygame pyspacemouse 
 ```
-Install Tracking Streamer on Apple Vision Pro.
+On Apple Vision Pro, install Tracking Streamer from the App Store. Launch the application and obtain the IP address, then update the `vision_pro_ip` parameter in `dexhand_teleop.yaml` with this address.
 
 # Usage
 Change to `DexTeleop/dexgrasp` directory
@@ -122,6 +122,7 @@ We use a 3D Connexion Space Mouse.
 | Mouse Cap| Delta 6D pose |
 | Left button | grasp |
 | Right button | Release |
+
 May encounter gimbal lock.
 
 Refer to class `SpaceMouseTeleop`.
