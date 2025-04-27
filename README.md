@@ -1,4 +1,11 @@
 # <p align="center"> Dexhand Teleop </p>
+<p align="center" float="left">
+  <img src="Media/avp.jpg" width="210" alt="original palm inertia"/>
+  <img src="Media/keyboard.jpg" width="140" alt="increased palm inertia"/>
+  <img src="Media/joystick.jpg" width="140" alt="increased palm inertia"/>
+  <img src="Media/SpaceMouse.png" width="140"/>
+  <img src="Media/allegro.png" width="150"/>
+</p>
 
 **Note**: More teleoperation devices are included! You can use either of these as teleop devices:
 * Apple Vision Pro
@@ -117,9 +124,6 @@ Refer to class `JoystickTeleopDevice`.
 ## Space Mouse
 To use Space Mouse control, make sure [PySpaceMouse](https://github.com/JakubAndrysek/PySpaceMouse) is installed.
 We use a 3D Connexion Space Mouse.
-<p align="center" float="left">
-  <img src="Media/SpaceMouse.png" width="150"/>
-</p>
 
 | Control | Action |
 |---------|--------|
