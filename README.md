@@ -31,6 +31,8 @@ pip install pygame pyspacemouse
 ```
 On Apple Vision Pro, install Tracking Streamer from the App Store. Launch the application and obtain the IP address, then update the `vision_pro_ip` parameter in `dexhand_teleop.yaml` with this address.
 
+If you want to use other teleoperation devices, modify `teleop_device` in `dexhand_teleop.yaml`
+
 # Usage
 Change to `DexTeleop/dexgrasp` directory
 ```bash
