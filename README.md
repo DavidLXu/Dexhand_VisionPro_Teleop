@@ -117,6 +117,9 @@ Refer to class `JoystickTeleopDevice`.
 ## Space Mouse
 To use Space Mouse control, make sure [PySpaceMouse](https://github.com/JakubAndrysek/PySpaceMouse) is installed.
 We use a 3D Connexion Space Mouse.
+<p align="center" float="left">
+  <img src="Media/SpaceMouse.png" width="150"/>
+</p>
 | Control | Action |
 |---------|--------|
 | Mouse Cap| Delta 6D pose |
