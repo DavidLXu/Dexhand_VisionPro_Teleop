@@ -32,7 +32,7 @@ INSTALL_REQUIRES = [
     "sorcery",
     "psutil",
     "pynvml",
-    "pybullet"
+    "pybullet",
     "lxml",
     "wandb",
     "GPUtil",
