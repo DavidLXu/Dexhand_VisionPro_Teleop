@@ -11,7 +11,7 @@ env:
   print_asset_info: False
   use_object: True
   # use your own object urdf file (obj is not directly supported by gym)
-  object_asset_path: "/data/DexHand_VisionPro_Teleop/YCB/021_bleach_cleanser"
+  object_asset_path: "../../YCB/021_bleach_cleanser"
   object_asset_file: "scaled_textured_simple.urdf"
 
   ########### Teleop Device ##########

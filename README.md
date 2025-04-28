@@ -81,7 +81,7 @@ For the allegro hand mounted on xArm6, there are multiple configurations for eac
 For instance we typically want the first configuation which is more "stretched" as the GIF shows, but it's possible to get the second configuration which is more "twisted" where the pitch rotation is constrained. To solve this, we can use a 7DoF arm (franka) with more advanced trajectory planning algorithms, which is beyond the scope of this repo.
 
 # Contact rich interaction
-WIP. Interaction with various objects.
+Interaction with various objects. In `dexhand_teleop.yaml`, set `use_object` as `True`. You can use your own object, and modify `object_asset_path` and `object_asset_file`.
 <p align="center" float="left">
   <img src="Media/contact_rich.gif" width="450"/>
 </p>
