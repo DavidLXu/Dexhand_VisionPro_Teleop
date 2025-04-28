@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="scaled_textured_simple">
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="scaled_textured_simple.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="scaled_textured_simple.obj" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1.0" />
+      <inertia ixx="4.35258434e-03" ixy="3.52136547e-06" ixz="-2.51928457e-04" iyy="4.69367652e-03" iyz="2.18448645e-06" izz="8.04416667e-04" />
+    </inertial>
+  </link>
+</robot>

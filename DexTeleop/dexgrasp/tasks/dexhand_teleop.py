@@ -577,6 +577,29 @@ class DexhandTeleop(BaseTask):
         # load dexterous_hand asset
         dexterous_hand_asset, dexterous_hand_start_pose, dexterous_hand_dof_props = self._load_dexterous_hand_assets(self.assets_path)
 
+        # load YCB object asset
+        if self.cfg['env']['use_object']:
+            object_asset_path = self.cfg['env']['object_asset_path']
+            object_asset_file = self.cfg['env']['object_asset_file']
+            object_asset_options = gymapi.AssetOptions()
+            object_asset_options.flip_visual_attachments = False
+            object_asset_options.fix_base_link = False
+            # object_asset_options
+            # object_asset_options.angular_damping = 1000000
+            # object_asset_options.linear_damping = 1000000
+            # object_asset_options.max_angular_velocity = 0.0
+            # object_asset_options.max_linear_velocity = 0.0
+
+            object_asset = self.gym.load_asset(self.sim, object_asset_path, object_asset_file, object_asset_options)
+            object_asset_start_pose = gymapi.Transform()
+            object_asset_start_pose.p = gymapi.Vec3(0, 0, 0)
+            object_asset_start_pose.r = gymapi.Quat().from_euler_zyx(0, 0, 0)
+
+            object_asset_dof_props = self.gym.get_asset_dof_properties(object_asset)
+            
+
+
+
         self.env_object_scale = []
         self.hand_indices= []
 
@@ -599,7 +622,7 @@ class DexhandTeleop(BaseTask):
                 dexterous_hand_start_pose, 
                 "hand", 
                 env_id, 
-                self.HAND_BIT, 
+                0, 
                 3
             )
 
@@ -615,6 +638,15 @@ class DexhandTeleop(BaseTask):
             hand_idx = self.gym.get_actor_index(env_ptr, dexterous_hand_actor, gymapi.DOMAIN_SIM)
             self.hand_indices.append(hand_idx)
 
+            if self.cfg['env']['use_object']:
+                object_actor = self.gym.create_actor(env_ptr, 
+                    object_asset, 
+                    object_asset_start_pose, 
+                    "object", 
+                    env_id, 
+                    0, 3)
+
+            
             # stop aggregate actors
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
