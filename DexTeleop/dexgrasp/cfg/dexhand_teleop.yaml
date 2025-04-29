@@ -15,8 +15,12 @@ env:
   object_asset_file: "scaled_textured_simple.urdf"
 
   ########### Teleop Device ##########
-  teleop_device: "keyboard"  #* "keyboard", "vision_pro", "meta_quest", "space_mouse", "joystick"
-  vision_pro_ip: "192.168.3.44"  # only used if teleop_device is "vision_pro" 
+  teleop_device: "vision_pro"  #* "keyboard", "vision_pro", "meta_quest", "space_mouse", "joystick"
+  vision_pro_ip: "192.168.100.32"  # only used if teleop_device is "vision_pro" 
+
+  ########### Record and Replay ###########
+  replay_mode: True
+  replay_file: "recorded_trajectories/trajectory_20250429-190021.json"  # path to the recorded actions file
 
   controlFrequencyInv: 1 # 60 Hz
 

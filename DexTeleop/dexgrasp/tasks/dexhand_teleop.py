@@ -9,6 +9,8 @@ import numpy as np
 import os.path as osp
 import os, glob, tqdm
 import random, torch, trimesh
+import json
+import time
 
 from isaacgym import gymtorch
 from isaacgym import gymapi
@@ -542,15 +544,34 @@ class DexhandTeleop(BaseTask):
         
         
         # Teleoperation device
-        if self.cfg['env']['teleop_device'] == "vision_pro":
-            self.teleop_device = AllegroPybulletIKPython(self.cfg['env']['vision_pro_ip']) #! modify ip address in dexhand_teleop.yaml
-        elif self.cfg['env']['teleop_device'] == "keyboard":
-            self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
-        elif self.cfg['env']['teleop_device'] == "space_mouse":
-            self.teleop_device = SpaceMouseTeleop(self.num_envs, self.device)
-        elif self.cfg['env']['teleop_device'] == "joystick":
-            self.teleop_device = JoystickTeleopDevice(self.num_envs, self.device)
+        if not self.cfg['env']['replay_mode']:
+            if self.cfg['env']['teleop_device'] == "vision_pro":
+                self.teleop_device = AllegroPybulletIKPython(self.cfg['env']['vision_pro_ip']) #! modify ip address in dexhand_teleop.yaml
+            elif self.cfg['env']['teleop_device'] == "keyboard":
+                self.teleop_device = KeyboardTeleopDevice(self.num_envs, self.device, self.gym, self.viewer)
+            elif self.cfg['env']['teleop_device'] == "space_mouse":
+                self.teleop_device = SpaceMouseTeleop(self.num_envs, self.device)
+            elif self.cfg['env']['teleop_device'] == "joystick":
+                self.teleop_device = JoystickTeleopDevice(self.num_envs, self.device)
 
+        # Recording and replay attributes
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_1, "start_recording")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_2, "stop_recording")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_3, "start_replaying")
+        self.gym.subscribe_viewer_keyboard_event(self.viewer, gymapi.KEY_4, "stop_replaying")
+
+        self.is_recording = False
+        self.is_replaying = False
+        self.recorded_trajectory = []
+        self.replay_trajectory = None
+        self.replay_index = 0
+        self.record_dt = self.dt
+        self.last_record_time = 0
+        
+        # Automatic replay mode
+        self.replay_mode = self.cfg['env'].get('replay_mode', False)
+        self.exit_after_replay = False
+        self.no_dynamics_replay = True  # Added flag to disable dynamics during replay
 
     def create_sim(self):
         self.dt = self.sim_params.dt
@@ -988,23 +1009,250 @@ class DexhandTeleop(BaseTask):
         self.gym.set_dof_position_target_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.cur_targets),
                                                         gymtorch.unwrap_tensor(all_hand_indices), len(all_hand_indices))
     
-    def pre_physics_step(self, actions):
-
-        if self.cfg['env']['teleop_device'] == "vision_pro":
-            if self.cfg['env']['use_xarm6']:
-                self.vision_pro_xarm6_action()
-            else:
-                self.vision_pro_armless_action()
+    def start_recording(self):
+        """Start recording the trajectory"""
+        print("Starting to record trajectory...")
+        self.is_recording = True
+        self.recorded_trajectory = []
+        self.last_record_time = time.time()
+    
+    def stop_recording(self):
+        """Stop recording and save the trajectory"""
+        self.is_recording = False
+        if len(self.recorded_trajectory) > 0:
+            # Create trajectories directory if it doesn't exist
+            os.makedirs("recorded_trajectories", exist_ok=True)
             
-        else: # teleoperation devices other than vision pro
-            if self.cfg['env']['use_xarm6']:
-                # self.xarm6_hand_action(self.actions)
-                self.dexteleop_xarm6_action()
-            else:
-                # self.armless_hand_action(self.actions)
-                self.dexteleop_armless_action()
-
+            # Save trajectory with timestamp
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            filename = f"recorded_trajectories/trajectory_{timestamp}.json"
+            
+            # Convert tensors to lists for JSON serialization
+            serializable_trajectory = []
+            for frame in self.recorded_trajectory:
+                serializable_frame = {
+                    'hand_pos': frame['hand_pos'].cpu().numpy().tolist(),
+                    'hand_rot': frame['hand_rot'].cpu().numpy().tolist(),
+                    'finger_pos': frame['finger_pos'].cpu().numpy().tolist()
+                }
+                if 'object_pos' in frame:
+                    serializable_frame['object_pos'] = frame['object_pos'].cpu().numpy().tolist()
+                    serializable_frame['object_rot'] = frame['object_rot'].cpu().numpy().tolist()
+                serializable_trajectory.append(serializable_frame)
+            
+            with open(filename, 'w') as f:
+                json.dump(serializable_trajectory, f)
+            print(f"Trajectory saved to {filename}")
+            self.recorded_trajectory = []
+    
+    def record_frame(self):
+        """Record current frame if enough time has passed"""
+        current_time = time.time()
+        if current_time - self.last_record_time >= self.record_dt:
+            frame = {
+                'hand_pos': self.right_hand_pos[0].clone(),  # Record only first env
+                'hand_rot': self.right_hand_rot[0].clone(),
+                'finger_pos': self.dexterous_hand_dof_pos[0].clone()
+            }
+            
+            # Record object pose if it exists
+            if self.cfg['env']['use_object']:
+                object_idx = self.num_envs  # Object index follows hand indices
+                frame['object_pos'] = self.root_state_tensor[object_idx:object_idx+1, 0:3].clone()
+                frame['object_rot'] = self.root_state_tensor[object_idx:object_idx+1, 3:7].clone()
+            
+            self.recorded_trajectory.append(frame)
+            self.last_record_time = current_time
+    
+    def load_trajectory(self, filename):
+        """Load a recorded trajectory from file"""
+        # Check if filename is a path or a key in config
+        if os.path.exists(filename):
+            trajectory_path = filename
+        else:
+            trajectory_path = self.cfg['env']['replay_file']
         
+        with open(trajectory_path, 'r') as f:
+            trajectory_data = json.load(f)
+        
+        # Convert lists back to tensors
+        self.replay_trajectory = []
+        for frame in trajectory_data:
+            tensor_frame = {
+                'hand_pos': torch.tensor(frame['hand_pos'], device=self.device),
+                'hand_rot': torch.tensor(frame['hand_rot'], device=self.device),
+                'finger_pos': torch.tensor(frame['finger_pos'], device=self.device)
+            }
+            if 'object_pos' in frame:
+                tensor_frame['object_pos'] = torch.tensor(frame['object_pos'], device=self.device)
+                tensor_frame['object_rot'] = torch.tensor(frame['object_rot'], device=self.device)
+            self.replay_trajectory.append(tensor_frame)
+        
+        print(f"Loaded trajectory with {len(self.replay_trajectory)} frames from {trajectory_path}")
+    
+    def start_replay(self):
+        """Start replaying a recorded trajectory"""
+        # Use the specified trajectory file
+        filename = "DexTeleop/dexgrasp/recorded_trajectories/trajectory_20250429-190021.json"
+        self.load_trajectory(filename)
+        self.is_replaying = True
+        self.replay_index = 0
+        print("Starting replay with no dynamics...")
+    
+    def stop_replay(self):
+        """Stop replaying the trajectory"""
+        self.is_replaying = False
+        self.replay_trajectory = None
+        self.replay_index = 0
+        print("Replay stopped")
+    
+    def replay_step(self):
+        """Execute one step of trajectory replay without dynamics"""
+        if not self.is_replaying or self.replay_trajectory is None:
+            return
+            
+        if self.replay_index >= len(self.replay_trajectory):
+            self.stop_replay()
+            # Exit the program if we're in replay_mode and have finished replaying
+            if self.exit_after_replay:
+                print("Replay completed. Exiting program.")
+                import sys
+                sys.exit(0)
+            return
+            
+        frame = self.replay_trajectory[self.replay_index]
+        
+        # Get the hand position and orientation from the frame
+        hand_pos = frame['hand_pos'].repeat(self.num_envs, 1)
+        hand_rot = frame['hand_rot'].repeat(self.num_envs, 1)
+        finger_pos = frame['finger_pos'].repeat(self.num_envs, 1)
+        
+        if self.no_dynamics_replay:
+            # Directly set the hand pose
+            wrist_idx = self.hand_body_idx_dict['wrist']
+            
+            # Create a tensor for all environment bodies (to be used with set_actor_root_state_tensor)
+            new_root_states = self.root_state_tensor.clone()
+            
+            # Set hand root state (position and rotation)
+            hand_actor_idx = 0  # Assuming hand is the first actor in each environment
+            hand_body_idx = self.gym.find_actor_rigid_body_index(self.envs[0], hand_actor_idx, "wrist", gymapi.DOMAIN_ENV)
+            
+            # Update the rigid body state directly
+            self.rigid_body_states[:, wrist_idx, 0:3] = hand_pos
+            self.rigid_body_states[:, wrist_idx, 3:7] = hand_rot
+            
+            # Set the DOF positions for the fingers
+            # all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
+            # self.gym.set_dof_position_tensor_indexed(
+            #     self.sim,
+            #     gymtorch.unwrap_tensor(finger_pos),
+            #     gymtorch.unwrap_tensor(all_hand_indices),
+            #     len(all_hand_indices)
+            # )
+            
+            # If there's an object in the scene, set its pose too
+            if 'object_pos' in frame and self.cfg['env']['use_object']:
+                object_idx = self.num_envs  # Object index follows hand indices
+                new_root_states[object_idx:object_idx+1, 0:3] = frame['object_pos']
+                new_root_states[object_idx:object_idx+1, 3:7] = frame['object_rot']
+                
+                # Apply the new root states
+                self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(new_root_states))
+        else:
+            # Original code with dynamics (left for reference but not used when no_dynamics_replay is True)
+            # Set hand position and orientation targets
+            right_hand_target_pos = hand_pos
+            right_hand_target_rot = hand_rot
+            
+            # Set finger position targets
+            self.cur_targets[:, :] = finger_pos
+            
+            # Apply the targets through regular control methods
+            if self.cfg['env']['use_xarm6']:
+                right_pos_err = (right_hand_target_pos - self.right_hand_pos)
+                right_rot_err = orientation_error(right_hand_target_rot, self.right_hand_rot)
+                right_dpose = torch.cat([right_pos_err, right_rot_err], -1).unsqueeze(-1)
+                right_delta = control_ik(
+                    self.jacobian[:4, 6, :, :6].to(torch.float),
+                    self.device,
+                    right_dpose,
+                    self.num_envs,
+                )
+                self.cur_targets[:, 0:6] = self.dexterous_hand_dof_pos[:, 0:6] + right_delta[:, :6]
+            else:
+                # For armless configuration, use force control
+                position_error = (right_hand_target_pos - self.right_hand_pos)
+                rotation_error = orientation_error(right_hand_target_rot, self.right_hand_rot)
+                
+                # Apply PID control
+                self.pos_error_integral += position_error * self.dt
+                self.rot_error_integral += rotation_error * self.dt
+                
+                force = self.Kp_pos * position_error + self.Ki_pos * self.pos_error_integral
+                torque = self.Kp_rot * rotation_error + self.Ki_rot * self.rot_error_integral
+                
+                self.apply_forces[:, 0, :] = force
+                self.apply_torque[:, 1, :] = torque
+                
+                self.gym.apply_rigid_body_force_tensors(
+                    self.sim,
+                    gymtorch.unwrap_tensor(self.apply_forces),
+                    gymtorch.unwrap_tensor(self.apply_torque),
+                    gymapi.ENV_SPACE,
+                )
+            
+            # Apply finger positions through target setting
+            all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
+            self.gym.set_dof_position_target_tensor_indexed(
+                self.sim,
+                gymtorch.unwrap_tensor(self.cur_targets),
+                gymtorch.unwrap_tensor(all_hand_indices),
+                len(all_hand_indices)
+            )
+        
+        self.replay_index += 1
+
+    def pre_physics_step(self, actions):
+        # Check if we should automatically start replay mode
+        if self.replay_mode and not self.is_replaying:
+            print("Automatically starting replay mode...")
+            self.start_replay()
+            self.exit_after_replay = True
+            
+        for evt in self.gym.query_viewer_action_events(self.viewer):
+            # print("action name", evt.action)
+            # controlling translation
+            if evt.action == "start_recording" and evt.value > 0:
+                self.start_recording()
+            elif evt.action == "stop_recording" and evt.value > 0:
+                self.stop_recording()
+            elif evt.action == "start_replaying" and evt.value > 0:
+                self.start_replay()
+            elif evt.action == "stop_replaying" and evt.value > 0:
+                self.stop_replay()
+        # Record frame if recording is active
+        if self.is_recording:
+            self.record_frame()
+        
+        # Either replay or perform normal teleoperation
+        if self.is_replaying:
+            # Execute replay step but don't advance physics if we're in no_dynamics mode
+            self.replay_step()
+            if self.no_dynamics_replay:
+                # Skip the regular physics step by doing nothing else
+                pass
+        else:
+            if self.cfg['env']['teleop_device'] == "vision_pro":
+                if self.cfg['env']['use_xarm6']:
+                    self.vision_pro_xarm6_action()
+                else:
+                    self.vision_pro_armless_action()
+            else:
+                if self.cfg['env']['use_xarm6']:
+                    self.dexteleop_xarm6_action()
+                else:
+                    self.dexteleop_armless_action()
 
     def post_physics_step(self):
 
