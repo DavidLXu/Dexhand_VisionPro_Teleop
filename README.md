@@ -90,6 +90,7 @@ The system supports recording and replaying teleoperation trajectories:
 4. Trajectories are saved in the `recorded_trajectories` directory with timestamp-based filenames
 
 #### Replaying
+There are two types of replaying. The first type only replays the trajectory without dynamics.
 ```bash
 # For convenience, use the replay script
 ./run_replay.sh [path/to/trajectory.json]
@@ -98,11 +99,11 @@ The system supports recording and replaying teleoperation trajectories:
 python tasks/replay_trajectory.py --trajectory [path/to/trajectory.json]
 ```
 
-During replay:
-- Press `R` to start replaying
-- Press `T` to stop replaying
-- Press `V` to toggle viewer sync
-- Press `ESC` to quit
+The second type of replaying considers dynamics while replaying. In `dexhand_teleop.yaml`, set `replay_mode: True`. Then the recorded trajectory is played in teleoperation environment.
+```bash
+./run_teleop.sh
+```
+
 
 ## Technical Pipeline
 
