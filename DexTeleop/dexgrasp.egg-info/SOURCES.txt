@@ -1,5 +1,4 @@
 LICENSE.txt
-README.md
 setup.py
 dexgrasp.egg-info/PKG-INFO
 dexgrasp.egg-info/SOURCES.txt

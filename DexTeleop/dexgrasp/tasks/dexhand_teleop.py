@@ -11,7 +11,8 @@ import os, glob, tqdm
 import random, torch, trimesh
 import json
 import time
-
+import pygame
+import pyspacemouse
 from isaacgym import gymtorch
 from isaacgym import gymapi
 
@@ -34,8 +35,8 @@ from typing import List, Optional, Union, Tuple
 
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional
-import pyspacemouse
-import pygame
+
+
 from pytorch3d.transforms import (
     axis_angle_to_matrix,
     axis_angle_to_quaternion,
@@ -248,9 +249,9 @@ class KeyboardTeleopDevice():
 class SpaceMouseTeleop:
     def __init__(self, num_envs: int, device: str):
         """Initialize SpaceMouse teleop interface"""
+
         self.num_envs = num_envs
         self.device = device
-        
         # Initialize position and euler angles
         self.position = torch.tensor([0, 0, 0.5], device=device)
         self.euler_angles = torch.tensor([1.57, 0, 1.57], device=device)
@@ -310,18 +311,14 @@ class JoystickTeleopDevice():
     def __init__(self, num_envs, device):
         self.num_envs = num_envs
         self.device = device
-
         # Initialize position and euler angles
         self.position = torch.tensor([0, 0, 0.5], device=device)
         self.euler_angles = torch.tensor([1.57, 0, 1.57], device=device)
         self.position_step = 0.01
         self.rotation_step = 0.157
-
         self.finger_val = torch.zeros((self.num_envs, 16), device=device)
-
         # Try to initialize joystick
         try:
-            
             pygame.init()
             pygame.joystick.init()
             self.joystick = pygame.joystick.Joystick(0)
@@ -331,6 +328,7 @@ class JoystickTeleopDevice():
         except:
             print("No joystick detected")
             self.has_joystick = False
+            exit()
 
     def get_teleop_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Get teleop data from joystick"""
@@ -344,6 +342,7 @@ class JoystickTeleopDevice():
             # Left stick controls XY translation
             x_axis = self.joystick.get_axis(0)
             y_axis = self.joystick.get_axis(1)
+            # print('DEBUG:', x_axis, y_axis)
             if abs(x_axis) > deadzone:
                 self.position[0] += -x_axis * self.position_step  # X translation
             if abs(y_axis) > deadzone:
@@ -777,6 +776,7 @@ class DexhandTeleop(BaseTask):
     # # ---------------------- Physics Simulation Steps ---------------------- # #
     def dexteleop_armless_action(self,actions=None):
         right_hand_target_pos, right_hand_target_rot, right_hand_target_finger = self.teleop_device.get_teleop_data()
+        # print('DEBUG:', right_hand_target_pos, right_hand_target_rot, right_hand_target_finger)
 
         position_error = (right_hand_target_pos - self.right_hand_pos)
         self.pos_error_integral += position_error * self.dt

@@ -25,6 +25,7 @@ Requires-Dist: h5py
 Requires-Dist: sorcery
 Requires-Dist: psutil
 Requires-Dist: pynvml
+Requires-Dist: pybullet
 Requires-Dist: lxml
 Requires-Dist: wandb
 Requires-Dist: GPUtil

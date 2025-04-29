@@ -16,6 +16,7 @@ h5py
 sorcery
 psutil
 pynvml
+pybullet
 lxml
 wandb
 GPUtil

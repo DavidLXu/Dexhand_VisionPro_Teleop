@@ -187,6 +187,26 @@ Note: May encounter gimbal lock. Refer to class `JoystickTeleopDevice` for imple
 | Right button | Release |
 
 Note: May encounter gimbal lock. Refer to class `SpaceMouseTeleop` for implementation details.
+Install all the dependencies and set the permission.
+```bash
+sudo apt-get install libhidapi-dev
+```
+Change to super user.
+```bash
+sudo su
+```
+run:
+```bash
+echo 'KERNEL=="hidraw*", SUBSYSTEM=="hidraw", MODE="0664", GROUP="plugdev"' > /etc/udev/rules.d/99-hidraw-permissions.rules
+```
+exit, and return to your user account.
+```bash
+exit
+sudo usermod -aG plugdev $USER
+newgrp plugdev
+```
+Then, restart your computer to load all the changes.
+Or you can see this [page](https://github.com/JakubAndrysek/PySpaceMouse) and install all the dependencies.
 
 ## Development Roadmap
 
