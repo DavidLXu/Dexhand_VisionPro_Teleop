@@ -170,9 +170,9 @@ class TrajectoryReplayer:
         
     def _create_envs(self, num_envs, spacing, num_per_row):
         # Simple environment creation with just the hand
-        asset_root = "/home/hypnos/github_repository/Dexhand_VisionPro_Teleop/Assets"
+        asset_root = "../../Assets"
         dexterous_hand_asset_file = "allegro_hand/allegro_hand_right_glb.urdf"
-        object_asset_root = "/home/hypnos/github_repository/Dexhand_VisionPro_Teleop"
+        object_asset_root = "../../"
         object_asset_file = "YCB/021_bleach_cleanser/scaled_textured_simple.urdf"
         
         print(f"Loading hand asset from: {asset_root}/{dexterous_hand_asset_file}")

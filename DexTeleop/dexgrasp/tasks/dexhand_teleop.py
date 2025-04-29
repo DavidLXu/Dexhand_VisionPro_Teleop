@@ -393,7 +393,7 @@ class JoystickTeleopDevice():
 
         return right_hand_target_pos, right_hand_target_rot, right_hand_target_finger
 
-
+        
 # DexhandTeleop Single Hand Teleop Env
 class DexhandTeleop(BaseTask):
     def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless,
@@ -412,7 +412,7 @@ class DexhandTeleop(BaseTask):
         self.init_dof_state =  self.init_hand_dof
 
         self.HAND_BIT = 0b001     # 0001 in binary
-
+            
         self.pos_error_integral = 0
         self.prev_pos_error = 0
         self.rot_error_integral = 0
@@ -571,7 +571,6 @@ class DexhandTeleop(BaseTask):
         # Automatic replay mode
         self.replay_mode = self.cfg['env'].get('replay_mode', False)
         self.exit_after_replay = False
-        self.no_dynamics_replay = True  # Added flag to disable dynamics during replay
 
     def create_sim(self):
         self.dt = self.sim_params.dt
@@ -667,7 +666,7 @@ class DexhandTeleop(BaseTask):
                     env_id, 
                     0, 3)
 
-            
+
             # stop aggregate actors
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
@@ -1066,13 +1065,7 @@ class DexhandTeleop(BaseTask):
     
     def load_trajectory(self, filename):
         """Load a recorded trajectory from file"""
-        # Check if filename is a path or a key in config
-        if os.path.exists(filename):
-            trajectory_path = filename
-        else:
-            trajectory_path = self.cfg['env']['replay_file']
-        
-        with open(trajectory_path, 'r') as f:
+        with open(filename, 'r') as f:
             trajectory_data = json.load(f)
         
         # Convert lists back to tensors
@@ -1088,16 +1081,15 @@ class DexhandTeleop(BaseTask):
                 tensor_frame['object_rot'] = torch.tensor(frame['object_rot'], device=self.device)
             self.replay_trajectory.append(tensor_frame)
         
-        print(f"Loaded trajectory with {len(self.replay_trajectory)} frames from {trajectory_path}")
+        print(f"Loaded trajectory with {len(self.replay_trajectory)} frames")
     
     def start_replay(self):
         """Start replaying a recorded trajectory"""
-        # Use the specified trajectory file
-        filename = "DexTeleop/dexgrasp/recorded_trajectories/trajectory_20250429-190021.json"
+        filename = self.cfg['env']['replay_file']
         self.load_trajectory(filename)
         self.is_replaying = True
         self.replay_index = 0
-        print("Starting replay with no dynamics...")
+        print("Starting replay...")
     
     def stop_replay(self):
         """Stop replaying the trajectory"""
@@ -1107,7 +1099,7 @@ class DexhandTeleop(BaseTask):
         print("Replay stopped")
     
     def replay_step(self):
-        """Execute one step of trajectory replay without dynamics"""
+        """Execute one step of trajectory replay"""
         if not self.is_replaying or self.replay_trajectory is None:
             return
             
@@ -1122,97 +1114,63 @@ class DexhandTeleop(BaseTask):
             
         frame = self.replay_trajectory[self.replay_index]
         
-        # Get the hand position and orientation from the frame
-        hand_pos = frame['hand_pos'].repeat(self.num_envs, 1)
-        hand_rot = frame['hand_rot'].repeat(self.num_envs, 1)
-        finger_pos = frame['finger_pos'].repeat(self.num_envs, 1)
+        # Set hand position and orientation targets
+        right_hand_target_pos = frame['hand_pos'].repeat(self.num_envs, 1)
+        right_hand_target_rot = frame['hand_rot'].repeat(self.num_envs, 1)
         
-        if self.no_dynamics_replay:
-            # Directly set the hand pose
-            wrist_idx = self.hand_body_idx_dict['wrist']
-            
-            # Create a tensor for all environment bodies (to be used with set_actor_root_state_tensor)
-            new_root_states = self.root_state_tensor.clone()
-            
-            # Set hand root state (position and rotation)
-            hand_actor_idx = 0  # Assuming hand is the first actor in each environment
-            hand_body_idx = self.gym.find_actor_rigid_body_index(self.envs[0], hand_actor_idx, "wrist", gymapi.DOMAIN_ENV)
-            
-            # Update the rigid body state directly
-            self.rigid_body_states[:, wrist_idx, 0:3] = hand_pos
-            self.rigid_body_states[:, wrist_idx, 3:7] = hand_rot
-            
-            # Set the DOF positions for the fingers
-            # all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
-            # self.gym.set_dof_position_tensor_indexed(
-            #     self.sim,
-            #     gymtorch.unwrap_tensor(finger_pos),
-            #     gymtorch.unwrap_tensor(all_hand_indices),
-            #     len(all_hand_indices)
-            # )
-            
-            # If there's an object in the scene, set its pose too
-            if 'object_pos' in frame and self.cfg['env']['use_object']:
-                object_idx = self.num_envs  # Object index follows hand indices
-                new_root_states[object_idx:object_idx+1, 0:3] = frame['object_pos']
-                new_root_states[object_idx:object_idx+1, 3:7] = frame['object_rot']
-                
-                # Apply the new root states
-                self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(new_root_states))
+        # Set finger position targets
+        self.cur_targets[:, :] = frame['finger_pos'].repeat(self.num_envs, 1)
+        
+        # Apply the targets
+        if self.cfg['env']['use_xarm6']:
+            right_pos_err = (right_hand_target_pos - self.right_hand_pos)
+            right_rot_err = orientation_error(right_hand_target_rot, self.right_hand_rot)
+            right_dpose = torch.cat([right_pos_err, right_rot_err], -1).unsqueeze(-1)
+            right_delta = control_ik(
+                self.jacobian[:4, 6, :, :6].to(torch.float),
+                self.device,
+                right_dpose,
+                self.num_envs,
+            )
+            self.cur_targets[:, 0:6] = self.dexterous_hand_dof_pos[:, 0:6] + right_delta[:, :6]
         else:
-            # Original code with dynamics (left for reference but not used when no_dynamics_replay is True)
-            # Set hand position and orientation targets
-            right_hand_target_pos = hand_pos
-            right_hand_target_rot = hand_rot
+            # For armless configuration, use force control
+            position_error = (right_hand_target_pos - self.right_hand_pos)
+            rotation_error = orientation_error(right_hand_target_rot, self.right_hand_rot)
             
-            # Set finger position targets
-            self.cur_targets[:, :] = finger_pos
+            # Apply PID control
+            self.pos_error_integral += position_error * self.dt
+            self.rot_error_integral += rotation_error * self.dt
+            self.Kp_pos = 4000
+            self.Ki_pos = 0.05
+            self.Kd_pos = 5
+            self.Kp_rot = 40 # 0.3
+            self.Ki_rot = 0.001
+            self.Kd_rot = 1.5 # 0.005
+            force = self.Kp_pos * position_error + self.Ki_pos * self.pos_error_integral
+            torque = self.Kp_rot * rotation_error + self.Ki_rot * self.rot_error_integral
             
-            # Apply the targets through regular control methods
-            if self.cfg['env']['use_xarm6']:
-                right_pos_err = (right_hand_target_pos - self.right_hand_pos)
-                right_rot_err = orientation_error(right_hand_target_rot, self.right_hand_rot)
-                right_dpose = torch.cat([right_pos_err, right_rot_err], -1).unsqueeze(-1)
-                right_delta = control_ik(
-                    self.jacobian[:4, 6, :, :6].to(torch.float),
-                    self.device,
-                    right_dpose,
-                    self.num_envs,
-                )
-                self.cur_targets[:, 0:6] = self.dexterous_hand_dof_pos[:, 0:6] + right_delta[:, :6]
-            else:
-                # For armless configuration, use force control
-                position_error = (right_hand_target_pos - self.right_hand_pos)
-                rotation_error = orientation_error(right_hand_target_rot, self.right_hand_rot)
-                
-                # Apply PID control
-                self.pos_error_integral += position_error * self.dt
-                self.rot_error_integral += rotation_error * self.dt
-                
-                force = self.Kp_pos * position_error + self.Ki_pos * self.pos_error_integral
-                torque = self.Kp_rot * rotation_error + self.Ki_rot * self.rot_error_integral
-                
-                self.apply_forces[:, 0, :] = force
-                self.apply_torque[:, 1, :] = torque
-                
-                self.gym.apply_rigid_body_force_tensors(
-                    self.sim,
-                    gymtorch.unwrap_tensor(self.apply_forces),
-                    gymtorch.unwrap_tensor(self.apply_torque),
-                    gymapi.ENV_SPACE,
-                )
+            self.apply_forces[:, 0, :] = force
+            self.apply_torque[:, 1, :] = torque
             
-            # Apply finger positions through target setting
-            all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
-            self.gym.set_dof_position_target_tensor_indexed(
+            self.gym.apply_rigid_body_force_tensors(
                 self.sim,
-                gymtorch.unwrap_tensor(self.cur_targets),
-                gymtorch.unwrap_tensor(all_hand_indices),
-                len(all_hand_indices)
+                gymtorch.unwrap_tensor(self.apply_forces),
+                gymtorch.unwrap_tensor(self.apply_torque),
+                gymapi.ENV_SPACE,
             )
         
+        # Apply finger positions
+        all_hand_indices = torch.unique(torch.cat([self.hand_indices]).to(torch.int32))
+        self.gym.set_dof_position_target_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self.cur_targets),
+            gymtorch.unwrap_tensor(all_hand_indices),
+            len(all_hand_indices)
+        )
+        
         self.replay_index += 1
-
+    
     def pre_physics_step(self, actions):
         # Check if we should automatically start replay mode
         if self.replay_mode and not self.is_replaying:
@@ -1237,11 +1195,7 @@ class DexhandTeleop(BaseTask):
         
         # Either replay or perform normal teleoperation
         if self.is_replaying:
-            # Execute replay step but don't advance physics if we're in no_dynamics mode
             self.replay_step()
-            if self.no_dynamics_replay:
-                # Skip the regular physics step by doing nothing else
-                pass
         else:
             if self.cfg['env']['teleop_device'] == "vision_pro":
                 if self.cfg['env']['use_xarm6']:
