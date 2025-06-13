@@ -1178,17 +1178,17 @@ class DexhandTeleop(BaseTask):
             self.start_replay()
             self.exit_after_replay = True
             
-        for evt in self.gym.query_viewer_action_events(self.viewer):
-            # print("action name", evt.action)
-            # controlling translation
-            if evt.action == "start_recording" and evt.value > 0:
-                self.start_recording()
-            elif evt.action == "stop_recording" and evt.value > 0:
-                self.stop_recording()
-            elif evt.action == "start_replaying" and evt.value > 0:
-                self.start_replay()
-            elif evt.action == "stop_replaying" and evt.value > 0:
-                self.stop_replay()
+        # for evt in self.gym.query_viewer_action_events(self.viewer):
+        #     # print("action name", evt.action)
+        #     # controlling translation
+        #     if evt.action == "start_recording" and evt.value > 0:
+        #         self.start_recording()
+        #     elif evt.action == "stop_recording" and evt.value > 0:
+        #         self.stop_recording()
+        #     elif evt.action == "start_replaying" and evt.value > 0:
+        #         self.start_replay()
+        #     elif evt.action == "stop_replaying" and evt.value > 0:
+        #         self.stop_replay()
         # Record frame if recording is active
         if self.is_recording:
             self.record_frame()
